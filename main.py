@@ -1,10 +1,13 @@
 import asyncio
-
+import os
 import flet as ft
+import glob
 from pynput import keyboard
 import threading
 import difflib
 import subprocess
+import screeninfo
+
 
 def open_terminal(): subprocess.Popen(["wt.exe"])
 
@@ -12,55 +15,106 @@ COMMAND_LIST = {
     "open terminal": {"icon": ft.icons.Icons.TERMINAL, "action": open_terminal},
 }
 
+def load_windows_apps():
+    user_apps = os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs")
+    system_apps = os.path.expandvars(r"%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs")
+
+    app_dict = {}
+    def scan_dir(base_path):
+        search_pattern = os.path.join(base_path, "**", "*.lnk")
+        for lnk_path in glob.glob(search_pattern, recursive=True):
+            app_name = os.path.basename(lnk_path).replace(".lnk", "").lower()
+            app_dict[app_name] = {
+                "icon": ft.icons.Icons.APPS,
+                "action" : lambda p=lnk_path: os.startfile(p),
+            }
+    scan_dir(user_apps)
+    scan_dir(system_apps)
+
+    return app_dict
+COMMAND_LIST.update(load_windows_apps())
+
+
 class ElegantPalette:
     def __init__(self):
+        self.results_list = None
         self.page = None
         self.loop = None
-
-
-    def _run_window(self):
-        ft.run(target=self.main, port=8550)
+        self.is_animating = False
 
     async def main(self, page: ft.Page):
         self.page = page
         self.loop = asyncio.get_running_loop()
         self.page.title = "Command Ghost"
 
-        self.page.window.always_on_top = True
+        self.page.window.title_bar_hidden = True
         self.page.window.frameless = True
-        # self.page.window.bg_color = ft.Colors.WHITE
-        self.page.window.width = 700
-        self.page.window.height = 80
+        self.page.window.width = 960
+        self.page.window.height = 800
         self.page.window.resizable = False
+
         self.page.window.bgcolor = ft.Colors.TRANSPARENT
         self.page.bgcolor = ft.Colors.TRANSPARENT
-        await self.page.window.center()
-        self.page.window.visible = False
 
         self.input_field = ft.TextField(
             hint_text="Search Commands...",
-            hint_style=ft.TextStyle(color=ft.Colors.GREY_400),
-            text_style=ft.TextStyle(size=24, color=ft.Colors.WHITE, font_family="Consolas"),
+            hint_style=ft.TextStyle(color=ft.Colors.GREY_500),
+            text_style=ft.TextStyle(size=20, color=ft.Colors.WHITE, font_family="Consolas"),
             autofocus=True,
-            border_color=ft.Colors.TRANSPARENT,
-            cursor_color=ft.Colors.WHITE,
-            content_padding=20,
+            border=ft.InputBorder.NONE,
+            text_align=ft.TextAlign.LEFT,
+            content_padding=ft.padding.only(left=20, right=20, top=14, bottom=4),
+            dense=True,
             on_submit=self.execute_closest_match,
-            on_change=self.hide_if_empty,
+            on_change=self.update_results,
         )
-        self.main_container = ft.Container(
-            content=self.input_field,
-            border_radius=15,
-            bgcolor="#44000000",
-            blur=ft.Blur(25,25),
-            border=ft.Border(
-                left=ft.BorderSide(2, ft.Colors.with_opacity(0.3, ft.Colors.PURPLE_600)),
-                right=ft.BorderSide(2, ft.Colors.with_opacity(0.3, ft.Colors.BLUE_600))
+        self.results_list = ft.Column(spacing=0, tight=True)
+
+        self.glow_container = ft.Container(
+            content=ft.Column(
+                [
+                    self.input_field,
+                    self.results_list,
+                ],
+                tight=True,
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
             ),
-            # animate=ft.Animation(300, ft.AnimationCurve.DECELERATE),
+            width=600,
+            padding=10,
+            align=ft.Alignment.CENTER,
+            border_radius=20,
+            bgcolor=ft.Colors.GREY_900,
+            shadow=[
+                ft.BoxShadow(spread_radius=1, blur_radius=0, color=ft.Colors.CYAN_400),
+                ft.BoxShadow(spread_radius=2, blur_radius=15, color=ft.Colors.CYAN_600),
+                ft.BoxShadow(spread_radius=-2, blur_radius=40, color=ft.Colors.PURPLE_600),
+                ft.BoxShadow(spread_radius=-5, blur_radius=80, color=ft.Colors.with_opacity(0.2, ft.Colors.PURPLE_900)),
+            ],
+            scale=ft.Scale(1),
+            opacity=1.0,
+            animate_opacity=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(150, ft.AnimationCurve.DECELERATE),
         )
-        self.page.add(self.main_container)
+        centered_layout = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [self.glow_container],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    )
+                ],
+                alignment=ft.MainAxisAlignment.START,
+            ),
+            expand=True,
+            padding=ft.padding.only(top=150)
+        )
+        self.page.add(centered_layout)
+
+        self.page.window.alignment = ft.Alignment.CENTER
+        self.page.window.visible = False
         self.page.update()
+
         threading.Thread(target=self.start_hotkeys, daemon=True).start()
 
     def start_hotkeys(self):
@@ -68,58 +122,98 @@ class ElegantPalette:
             h.join()
 
     def trigger_toggle(self):
-        asyncio.run_coroutine_threadsafe(self.toggle_ui(), self.loop)
+        if self.loop and not self.is_animating:
+            asyncio.run_coroutine_threadsafe(self.toggle_ui(), self.loop)
 
     def trigger_hide(self):
-        asyncio.run_coroutine_threadsafe(self.hide(), self.loop)
+        if self.loop and not self.is_animating:
+            asyncio.run_coroutine_threadsafe(self.hide(), self.loop)
 
     async def toggle_ui(self):
         if self.page.window.visible:
-            await self.show()
-        else:
             await self.hide()
-
+        else:
+            await self.show()
 
     async def show(self):
+        self.is_animating = True
         self.page.window.visible = True
-        await self.input_field.focus()
+        await self.page.window.to_front()
         self.page.update()
+
+        self.glow_container.scale=1.0
+        self.glow_container.opacity=1.0
+        self.page.update()
+
+        await self.input_field.focus()
+        self.is_animating = False
 
     async def hide(self):
-        self.input_field.value = ""
-        self.page.window.visible = False
+        self.is_animating = True
+        self.glow_container.scale=0.95
+        self.glow_container.opacity=0.0
         self.page.update()
 
-    def hide_if_empty(self, e):
-        if not e.control.value:
-            pass
+        await asyncio.sleep(0.15)
+
+        self.input_field.value = ""
+        self.page.window.height = 310
+        self.results_list.controls.clear()
+        self.page.window.visible = False
+        self.page.update()
+        self.is_animating= False
+
+    def update_results(self, e):
+        query = e.control.value.lower().strip()
+        self.results_list.controls.clear()
+
+        matches = [k for k in COMMAND_LIST.keys() if query in k]
+        usable_matches = matches[:7]
+        glow_padding = 310
+        base_bar_height = 80
+        results_height = len(usable_matches)*55
+        self.page.window.height = base_bar_height+results_height+glow_padding
+        for m in usable_matches:
+            self.results_list.controls.append(
+                ft.ListTile(
+                    leading=ft.Icon(COMMAND_LIST[m]['icon'], color=ft.Colors.GREY_400, size=20),
+                    title=ft.Text(m, color=ft.Colors.WHITE, size=16, font_family="Consolas"),
+                    hover_color="#33ffffff",
+                    on_click = lambda _, cmd=m: asyncio.run_coroutine_threadsafe(self.run_command(cmd))
+                )
+            )
+        self.page.window.alignment = ft.Alignment.CENTER
+        self.page.update()
+
+    async def run_command(self, cmd):
+        COMMAND_LIST[cmd]['action']()
+        await self.hide()
 
     async def execute_closest_match(self, e):
         user_input = e.control.value.lower().strip()
         matches = difflib.get_close_matches(user_input, COMMAND_LIST.keys(), n=1, cutoff=0.4)
 
         if matches:
-            chosen_cmd = COMMAND_LIST[matches[0]]
-            chosen_cmd['action']()
+            await self.run_command(matches[0])
         await self.hide()
 
 if __name__ == "__main__":
     palette = ElegantPalette()
-    asyncio.run(ft.run_async(main=palette.main))
+    ft.app(target=palette.main)
 
-
-async def on_activate():
-    try:
-        if palette.page:
-            if not palette.page.window.visible:
-                await palette.show()
-            else:
-                await palette.hide()
-    except Exception as e: print(e)
-
-async def on_escape():
-    if palette.page and palette.page.window.visible:
-        await palette.hide()
+#
+# async def on_activate():
+#     try:
+#         if palette.page:
+#             if not palette.page.window.visible:
+#                 await palette.show()
+#             else:
+#                 await palette.hide()
+#     except Exception as e: print(e)
+#
+# async def on_escape():
+#     if palette.page and palette.page.window.visible:
+#         await palette.hide()
 
 
 
