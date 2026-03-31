@@ -2,7 +2,8 @@ import asyncio
 import os
 import flet as ft
 import glob
-from pynput import keyboard
+# from pynput import keyboard
+import keyboard
 import threading
 import difflib
 import subprocess
@@ -11,7 +12,16 @@ import subprocess
 def open_terminal(): subprocess.Popen(["wt.exe"])
 
 COMMAND_LIST = {
-    "open terminal": {"icon": ft.icons.Icons.TERMINAL, "action": open_terminal},
+    "open": {
+        "icon" : ft.icons.Icons.APPS,
+        "hint" : "launches an application",
+        "get_results" : lambda arg: [
+            {"display_text": app, "subtitle": "Application", "value": app} for app in APP_LIST.keys() if arg in app
+        ], "action": lambda arg: APP_LIST[arg]["action"]()
+    }
+}
+APP_LIST = {
+    "terminal" : {"icon": ft.icons.Icons.TERMINAL, "action": open_terminal}
 }
 
 def load_windows_apps():
@@ -31,7 +41,7 @@ def load_windows_apps():
     scan_dir(system_apps)
 
     return app_dict
-COMMAND_LIST.update(load_windows_apps())
+APP_LIST.update(load_windows_apps())
 
 
 class ElegantPalette:
@@ -90,10 +100,10 @@ class ElegantPalette:
                 ft.BoxShadow(spread_radius=-2, blur_radius=40, color=ft.Colors.PURPLE_600),
                 ft.BoxShadow(spread_radius=-5, blur_radius=80, color=ft.Colors.with_opacity(0.2, ft.Colors.PURPLE_900)),
             ],
-            scale=ft.Scale(1),
+            # scale=ft.Scale(1),
             opacity=1.0,
             animate_opacity=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(150, ft.AnimationCurve.DECELERATE),
+            # animate_scale=ft.Animation(150, ft.AnimationCurve.DECELERATE),
         )
         centered_layout = ft.Container(
             content=ft.Column(
@@ -117,8 +127,11 @@ class ElegantPalette:
         threading.Thread(target=self.start_hotkeys, daemon=True).start()
 
     def start_hotkeys(self):
-        with keyboard.GlobalHotKeys({'<alt>+<space>': self.trigger_toggle,'<esc>': self.trigger_hide}) as h:
-            h.join()
+        keyboard.add_hotkey('cmd+space', self.trigger_toggle, suppress=True)
+        keyboard.add_hotkey('esc', self.trigger_hide, suppress=False)
+        keyboard.wait()
+        # with keyboard.GlobalHotKeys({'<alt>+<space>': self.trigger_toggle,'<esc>': self.trigger_hide}) as h:
+        #     h.join()
 
     def trigger_toggle(self):
         if self.loop and not self.is_animating:
@@ -140,7 +153,7 @@ class ElegantPalette:
         await self.page.window.to_front()
         self.page.update()
 
-        self.glow_container.scale=1.0
+        # self.glow_container.scale=1.0
         self.glow_container.opacity=1.0
         self.page.update()
 
@@ -149,14 +162,14 @@ class ElegantPalette:
 
     async def hide(self):
         self.is_animating = True
-        self.glow_container.scale=0.95
+        # self.glow_container.scale=0.95
         self.glow_container.opacity=0.0
         self.page.update()
 
         await asyncio.sleep(0.15)
 
         self.input_field.value = ""
-        self.page.window.height = 310
+        # self.page.window.height = 310
         self.results_list.controls.clear()
         self.page.window.visible = False
         self.page.update()
@@ -165,28 +178,62 @@ class ElegantPalette:
     def update_results(self, e):
         query = e.control.value.lower().strip()
         self.results_list.controls.clear()
+        if not query:
+            self.results_list.height = None
+            self.page.update()
+            return
 
-        matches = [k for k in COMMAND_LIST.keys() if query in k]
-        usable_matches = matches[:7]
-        glow_padding = 310
-        base_bar_height = 80
-        results_height = len(usable_matches)*55
-        self.page.window.height = base_bar_height+results_height+glow_padding
-        for m in usable_matches:
-            self.results_list.controls.append(
-                ft.ListTile(
-                    leading=ft.Icon(COMMAND_LIST[m]['icon'], color=ft.Colors.GREY_400, size=20),
-                    title=ft.Text(m, color=ft.Colors.WHITE, size=16, font_family="Consolas"),
-                    hover_color="#33ffffff",
-                    on_click = lambda _, cmd=m: asyncio.run_coroutine_threadsafe(self.run_command(cmd))
+        parts = query.split(' ', 1)
+        base_cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        display_items = []
+
+        if arg is not None and base_cmd in COMMAND_LIST:
+            command_def = COMMAND_LIST[base_cmd]
+            results = command_def["get_results"](arg)
+
+            for res in results[:7]:
+                display_items.append(
+                    ft.ListTile(
+                        leading=ft.Icon(command_def['icon'], color=ft.Colors.GREY_400, size=20),
+                        title=ft.Text(res["display_text"], color=ft.Colors.WHITE, size=16, font_family="Consolas"),
+                        subtitle=ft.Text(res["subtitle"], color=ft.Colors.GREY_600, size=12),
+                        hover_color="#33ffffff",
+                        on_click=lambda _, cmd=base_cmd, val=res["value"]: asyncio.run_coroutine_threadsafe(self.run_command(cmd, val), self.loop)
+                    )
                 )
-            )
-        self.page.window.alignment = ft.Alignment.CENTER
+        # glow_padding = 310
+        # base_bar_height = 80
+        # results_height = len(usable_matches)*55
+        # self.page.window.height = base_bar_height+results_height+glow_padding
+        else:
+            matches = [k for k in COMMAND_LIST.keys() if base_cmd in k]
+            usable_matches = matches[:7]
+            for m in usable_matches:
+                display_items.append(
+                    ft.ListTile(
+                        leading=ft.Icon(COMMAND_LIST[m]["icon"], color=ft.Colors.GREY_400, size=20),
+                        title=ft.Text(f"{m} ...", color=ft.Colors.WHITE, size=16, font_family="Consolas"),
+                        subtitle=ft.Text(COMMAND_LIST[m]["hint"], color=ft.Colors.GREY_500, size=12),
+                        hover_color="#33ffffff",
+                        on_click = lambda _, cmd=m: self.autocomplete_command(cmd)
+                    )
+                )
+        self.results_list.controls = display_items
+        # self.page.window.alignment = ft.Alignment.CENTER
+        calc_height = min(len(display_items), 7)*65
+        self.results_list.height = calc_height if calc_height > 0 else None
         self.page.update()
-
-    async def run_command(self, cmd):
-        COMMAND_LIST[cmd]['action']()
-        await self.hide()
+    def autocomplete_command(self, cmd):
+        self.input_field.value = f"{cmd}"
+        self.input_field.focus()
+        self.page.update()
+        self.update_results(ft.control_event.ControlEvent(target="",name="",data="",control=self.input_field,page=self.page))
+    async def run_command(self, cmd, arg):
+        if arg != "":
+            COMMAND_LIST[cmd]["action"](arg)
+            await self.hide()
 
     async def execute_closest_match(self, e):
         user_input = e.control.value.lower().strip()
