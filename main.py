@@ -2,7 +2,6 @@ import asyncio
 import os
 import flet as ft
 import glob
-# from pynput import keyboard
 import keyboard
 import threading
 import difflib
@@ -246,20 +245,6 @@ class ElegantPalette:
 if __name__ == "__main__":
     palette = ElegantPalette()
     ft.app(target=palette.main)
-
-#
-# async def on_activate():
-#     try:
-#         if palette.page:
-#             if not palette.page.window.visible:
-#                 await palette.show()
-#             else:
-#                 await palette.hide()
-#     except Exception as e: print(e)
-#
-# async def on_escape():
-#     if palette.page and palette.page.window.visible:
-#         await palette.hide()
 
 
 
