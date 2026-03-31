@@ -7,7 +7,7 @@ import threading
 import difflib
 import subprocess
 import commands
-
+import math_module
 cmd = commands.Commands()
 def open_terminal(): subprocess.Popen(["wt.exe"])
 
@@ -103,6 +103,7 @@ class ElegantPalette:
             hint_style=ft.TextStyle(color=ft.Colors.GREY_500),
             text_style=ft.TextStyle(size=20, color=ft.Colors.WHITE, font_family="Consolas"),
             autofocus=True,
+            width=500,
             border=ft.InputBorder.NONE,
             text_align=ft.TextAlign.LEFT,
             content_padding=ft.padding.only(left=20, right=20, top=14, bottom=4),
@@ -243,6 +244,17 @@ class ElegantPalette:
         else:
             matches = [k for k in COMMAND_LIST.keys() if base_cmd in k]
             usable_matches = matches[:7]
+            if len(usable_matches) == 0:
+                # print(math_module.calculate(query))
+                display_items.append(
+                    ft.ListTile(
+                        leading=ft.Icon(ft.icons.Icons.CALCULATE, color=ft.Colors.GREY_400, size=20),
+                        title=ft.Text(f"Result: {math_module.calculate(query)}", color=ft.Colors.WHITE, size=16, font_family="Consolas"),
+                        subtitle=ft.Text("Calculator", color=ft.Colors.GREY_500, size=12),
+                        hover_color="#33ffffff",
+                        # on_click=lambda _, cmd=m: self.autocomplete_command(cmd)
+                    )
+                )
             for m in usable_matches:
                 display_items.append(
                     ft.ListTile(
@@ -267,6 +279,7 @@ class ElegantPalette:
         if arg != "":
             COMMAND_LIST[cmd]["action"](arg)
             await self.hide()
+        else: print("no")
         # else:
         #     COMMAND_LIST[cmd]["action"]()
         #     await self.hide()
@@ -288,6 +301,8 @@ class ElegantPalette:
             if results:
                 await self.run_command(parts[0], results[0]["value"])
                 await self.hide()
+        elif parts[0] not in COMMAND_LIST:
+            print("balls")
 
 if __name__ == "__main__":
     palette = ElegantPalette()
