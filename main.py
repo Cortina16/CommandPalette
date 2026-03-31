@@ -6,6 +6,7 @@ import keyboard
 import threading
 import difflib
 import subprocess
+import commands
 
 
 def open_terminal(): subprocess.Popen(["wt.exe"])
@@ -17,11 +18,26 @@ COMMAND_LIST = {
         "get_results" : lambda arg: [
             {"display_text": app, "subtitle": "Application", "value": app} for app in APP_LIST.keys() if arg in app
         ], "action": lambda arg: APP_LIST[arg]["action"]()
+    },
+    "google" : {
+        "icon" : ft.icons.Icons.SEARCH,
+        "hint" : "Search for something online",
+        "get_results" : lambda arg: [
+            {"display_text" : f"Search for '{arg}'", "subtitle": "Web Search", "value": arg}
+        ] if arg else [{"display_text": "Type a query...", "subtitle": "Web Search", "value": ""}],
+        "action" : lambda arg: print(commands.Commands.web_search(arg))
     }
 }
+
+
+
 APP_LIST = {
     "terminal" : {"icon": ft.icons.Icons.TERMINAL, "action": open_terminal}
 }
+
+
+
+
 
 def load_windows_apps():
     user_apps = os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs")
@@ -184,13 +200,15 @@ class ElegantPalette:
 
         parts = query.split(' ', 1)
         base_cmd = parts[0]
-        arg = parts[1] if len(parts) > 1 else ""
+        arg = parts[1] if len(parts) > 1 else None
+        print(query)
 
         display_items = []
 
         if arg is not None and base_cmd in COMMAND_LIST:
             command_def = COMMAND_LIST[base_cmd]
             results = command_def["get_results"](arg)
+            print(arg)
 
             for res in results[:7]:
                 display_items.append(
@@ -233,14 +251,27 @@ class ElegantPalette:
         if arg != "":
             COMMAND_LIST[cmd]["action"](arg)
             await self.hide()
+        # else:
+        #     COMMAND_LIST[cmd]["action"]()
+        #     await self.hide()
 
     async def execute_closest_match(self, e):
         user_input = e.control.value.lower().strip()
-        matches = difflib.get_close_matches(user_input, COMMAND_LIST.keys(), n=1, cutoff=0.4)
+        if not user_input:
+            await self.hide()
+            return
+        parts = user_input.split(" ", 1)
+        base_cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else None
 
-        if matches:
-            await self.run_command(matches[0])
-        await self.hide()
+        # matches = difflib.get_close_matches(base_cmd, COMMAND_LIST.keys(), n=1, cutoff=0.4)
+
+        if len(parts) == 2 and parts[0] in COMMAND_LIST:
+            command_def = COMMAND_LIST[parts[0]]
+            results = command_def["get_results"](arg)
+            if results:
+                await self.run_command(parts[0], results[0]["value"])
+                await self.hide()
 
 if __name__ == "__main__":
     palette = ElegantPalette()
