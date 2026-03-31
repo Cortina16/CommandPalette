@@ -8,7 +8,7 @@ import difflib
 import subprocess
 import commands
 
-
+cmd = commands.Commands()
 def open_terminal(): subprocess.Popen(["wt.exe"])
 
 COMMAND_LIST = {
@@ -26,11 +26,29 @@ COMMAND_LIST = {
             {"display_text" : f"Search for '{arg}'", "subtitle": "Web Search", "value": arg}
         ] if arg else [{"display_text": "Type a query...", "subtitle": "Web Search", "value": ""}],
         "action" : lambda arg: print(commands.Commands.web_search(arg))
+    },
+    "spotify" : {
+        "icon" : ft.icons.Icons.MUSIC_NOTE,
+        "hint" : "Control spotify",
+        "get_results" : lambda arg: [
+            {"display_text" : option, "subtitle": "Control Spotify", "value": option} for option in CONTROL_LIST.keys() if arg in option
+        ],
+        "action" : lambda arg: CONTROL_LIST[arg]["action"]("toggle_playback")
+    },
+    "browse" : {
+        "icon" : ft.icons.Icons.SEARCH,
+        "hint" : "open url",
+        "get_results" : lambda arg: [
+            {"display_text": f"Open '{arg}'", "subtitle": "Web search", "value": arg}
+        ] if arg else [{"display_text": "Type a URL...", "subtitle": "Open website", "value": ""}],
+        "action" : lambda arg: cmd.open_tabs(arg)
     }
 }
 
 
-
+CONTROL_LIST = {
+    "toggle playback" : {"icon" : ft.icons.Icons.TOGGLE_ON, "action": commands.main_controller_spotify},
+}
 APP_LIST = {
     "terminal" : {"icon": ft.icons.Icons.TERMINAL, "action": open_terminal}
 }
@@ -115,10 +133,10 @@ class ElegantPalette:
                 ft.BoxShadow(spread_radius=-2, blur_radius=40, color=ft.Colors.PURPLE_600),
                 ft.BoxShadow(spread_radius=-5, blur_radius=80, color=ft.Colors.with_opacity(0.2, ft.Colors.PURPLE_900)),
             ],
-            # scale=ft.Scale(1),
+            scale=ft.Scale(1),
             opacity=1.0,
             animate_opacity=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
-            # animate_scale=ft.Animation(150, ft.AnimationCurve.DECELERATE),
+            animate_scale=ft.Animation(150, ft.AnimationCurve.DECELERATE),
         )
         centered_layout = ft.Container(
             content=ft.Column(
@@ -168,7 +186,7 @@ class ElegantPalette:
         await self.page.window.to_front()
         self.page.update()
 
-        # self.glow_container.scale=1.0
+        self.glow_container.scale=1.0
         self.glow_container.opacity=1.0
         self.page.update()
 
@@ -177,7 +195,7 @@ class ElegantPalette:
 
     async def hide(self):
         self.is_animating = True
-        # self.glow_container.scale=0.95
+        self.glow_container.scale=0.95
         self.glow_container.opacity=0.0
         self.page.update()
 
@@ -201,14 +219,12 @@ class ElegantPalette:
         parts = query.split(' ', 1)
         base_cmd = parts[0]
         arg = parts[1] if len(parts) > 1 else None
-        print(query)
 
         display_items = []
 
         if arg is not None and base_cmd in COMMAND_LIST:
             command_def = COMMAND_LIST[base_cmd]
             results = command_def["get_results"](arg)
-            print(arg)
 
             for res in results[:7]:
                 display_items.append(
