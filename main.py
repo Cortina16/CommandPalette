@@ -6,7 +6,6 @@ from pynput import keyboard
 import threading
 import difflib
 import subprocess
-import screeninfo
 
 
 def open_terminal(): subprocess.Popen(["wt.exe"])
