@@ -10,6 +10,7 @@ import commands
 import math_module
 cmd = commands.Commands()
 def open_terminal(): subprocess.Popen(["wt.exe"])
+import equation_solver
 
 COMMAND_LIST = {
     "open": {
@@ -42,7 +43,15 @@ COMMAND_LIST = {
             {"display_text": f"Open '{arg}'", "subtitle": "Web search", "value": arg}
         ] if arg else [{"display_text": "Type a URL...", "subtitle": "Open website", "value": ""}],
         "action" : lambda arg: cmd.open_tabs(arg)
-    }
+    },
+    "math" : {
+        "icon" : ft.icons.Icons.CALCULATE,
+        "hint" : "Solve equation",
+        "get_results" : lambda arg: [
+            {"display_text": f"Solve '{arg}'", "subtitle": "Solve equation", "value": arg}
+        ] if arg else [{"display_text": "Start typing an equation...", "subtitle" : "solve for x", "value": ""}],
+        "action" : lambda arg: print('a')
+    },
 }
 
 
@@ -92,7 +101,7 @@ class ElegantPalette:
         self.page.window.title_bar_hidden = True
         self.page.window.frameless = True
         self.page.window.width = 960
-        self.page.window.height = 800
+        self.page.window.height = 900
         self.page.window.resizable = False
 
         self.page.window.bgcolor = ft.Colors.TRANSPARENT
@@ -298,6 +307,26 @@ class ElegantPalette:
         if len(parts) == 2 and parts[0] in COMMAND_LIST:
             command_def = COMMAND_LIST[parts[0]]
             results = command_def["get_results"](arg)
+            if command_def["hint"] == "Solve equation":
+                print('hit')
+                out = str(equation_solver.solve_eqn(arg))
+
+                display_items = [(
+                    ft.ListTile(
+                        leading=ft.Icon(ft.icons.Icons.CALCULATE, color=ft.Colors.GREY_400, size=20),
+                        title=ft.Text(f"Result: {equation_solver.solve_eqn(arg)}", color=ft.Colors.WHITE, size=16,
+                                      font_family="Consolas"),
+                        subtitle=ft.Text("Calculator", color=ft.Colors.GREY_500, size=12),
+                        hover_color="#33ffffff",
+                        # on_click=lambda _, cmd=m: self.autocomplete_command(cmd)
+                    )
+                )]
+                self.results_list.controls = display_items
+                calc_height = len(out.splitlines())*30+65
+                self.results_list.height = calc_height if calc_height > 0 else None
+                return
+
+
             if results:
                 await self.run_command(parts[0], results[0]["value"])
                 await self.hide()

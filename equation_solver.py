@@ -11,6 +11,9 @@ import ast
 #         return ""
 
 def get_first_var(eq):
+    if type(eq) == tuple:
+        eq = eq[1]
+    print(eq)
     variables = eq.free_symbols
     if not variables:
         return eq
@@ -31,68 +34,57 @@ def generate_expression(str, *args):
 
 
 def next_step(expression: sympy.Equality):
-    steps = []
-    stack = [expression]
     current_eq = expression
-    var = get_first_var(current_eq)
-    runs = 0
-    expanded = False
 
-    print(current_eq.rhs.is_constant())
-    print(current_eq.lhs == var)
-    print(current_eq.lhs == var and current_eq.rhs.is_constant())
+    msg, next_eq = isolate(current_eq)
+    if msg: return [(msg, next_eq)]
 
-    while not (current_eq.lhs == var and current_eq.rhs.is_constant()):
-        print(f" run: {runs}", end='\r', flush=True)
-        sys.stdout.write(f'\r{runs}')
-        sys.stdout.flush()
-        print(current_eq)
-        if expanded == False:
-            msg, next_eq = distribute(current_eq)
-            if msg:
-                steps.append((msg, next_eq))
-                current_eq = next_eq
-                print('distributed')
-                continue
-            expanded = True
-        if not is_linear(current_eq):
-            msg, next_eq = factoring(current_eq)
-            if msg:
-                steps.append((msg, next_eq))
-                current_eq = next_eq
-                print('factoring')
-                continue
-        msg, next_eq = power_cleanup(current_eq)
-        if msg:
-            steps.append((msg, next_eq))
-            current_eq = next_eq
-            print('power_cleanuping')
-            continue
+    msg, next_eq = power_cleanup(current_eq)
+    if msg: return [(msg, next_eq)]
 
-        msg, next_eq = zero_prod_prop(current_eq)
-        if msg:
-            steps.append((msg, next_eq))
-            current_eq = next_eq
-            print('zero prod')
-            continue
-        msg, next_eq = isolate(current_eq)
-        if msg:
-            steps.append((msg, next_eq))
-            current_eq = next_eq
-            print('isolate')
-            continue
-        msg, next_eq = coefficient_cleanup(next_eq)
-        if msg:
-            steps.append((msg, next_eq))
-            current_eq = next_eq
-            print('cleaning')
-            continue
-        runs += 1
-        break
+    msg, next_eq = zero_prod_prop(current_eq)
+    if msg: return [(msg, next_eq)]
 
-    return steps
+    msg, next_eq = sqrt(current_eq)
+    if msg: return [(msg, next_eq)]
 
 
+    if not is_linear(current_eq.lhs):
+        msg, next_eq = factoring(current_eq)
+        if msg: return [(msg, next_eq)]
+        msg, next_eq = distribute(current_eq)
+        if msg: return [(msg, next_eq)]
+    msg, next_eq = coefficient_cleanup(current_eq)
+    if msg: return [(msg, next_eq)]
+    return []
+
+
+def solve_recursive(task):
+    eq = task["eq"]
+    history = task["history"]
+
+    steps = next_step(eq)
+
+    if not steps:
+        return history
+
+    msg, result = steps[0]
+    # result = next_step(eq)
+
+    if isinstance(result, list):
+        branch_result = []
+        for i, branch in enumerate(result):
+            new_task = {
+                "eq": branch,
+                "history" : history + [(f"{msg} Factor {i+1}", branch)]
+            }
+            branch_result.append(solve_recursive(new_task))
+        return branch_result
+    new_task = {
+        "eq" : result,
+        "history" : history + [(msg, result)]
+    }
+    return solve_recursive(new_task)
 
 
 
@@ -108,7 +100,14 @@ def coefficient_cleanup(eq):
 
 def isolate(eq):
     lhs, rhs = eq.lhs, eq.rhs
+
     var = get_first_var(eq)
+
+    poly = sympy.Poly(lhs, var)
+    coeffs = poly.all_coeffs()
+    is_pure_quadratic = (len(coeffs) == 3 and coeffs[1] == 0)
+    if sympy.degree(eq.lhs, gen=var) > 1 and not is_pure_quadratic:
+        return None, eq
     constant, x_terms = lhs.as_independent(var, as_Add=True)
     new_eqn = sympy.Eq(lhs-constant, rhs-constant)
     if eq != new_eqn:
@@ -141,6 +140,13 @@ def power_cleanup(eq):
         return f"Take the square root of both sides", sympy.Eq(base,rhs)
     return None, eq
 
+def sqrt(eq):
+    lhs, rhs = eq.lhs, eq.rhs
+    var = get_first_var(eq)
+    if isinstance(lhs, sympy.Pow) and lhs.exp == 2:
+        res = sympy.sqrt(rhs)
+        return "Take the square root of both sides", [sympy.Eq(lhs.base, res), sympy.Eq(lhs.base, -res)]
+    return None, eq
 #polynomials
 
 def expand_conjugates(eq):
@@ -155,6 +161,8 @@ def expand_conjugates(eq):
 
 def factoring(eq):
     lhs, rhs = eq.lhs, eq.rhs
+    if eq.rhs != 0:
+        return None, eq
     var = get_first_var(eq)
     new_lhs = sympy.factor(lhs)
     new_rhs = sympy.factor(rhs)
@@ -193,14 +201,54 @@ def is_linear(eq):
     var = get_first_var(eq)
     return sympy.degree(eq, gen=var) <= 1
 
+def formatter(steps):
+    str = ""
+
+    def str_builder(steps, level=0):
+        nonlocal str
+        indent = "  " * level
+
+        if isinstance(steps, tuple):
+            msg, eq = steps
+            str += (f"{indent}↳ {msg}: {eq}\n")
+            return
+
+        if isinstance(steps, list):
+            for step in steps:
+                if isinstance(step, list) and len(step) > 0 and isinstance(step[0], list):
+                    str += (f"{indent} Split into {len(step)} cases:\n")
+                    for i, branch in enumerate(step):
+                        str += (f"{indent} Case {i + 1}:\n")
+                        str_builder(branch, level + 2)
+                else:
+                    str_builder(step, level)
+    str_builder(steps)
+    return str
+
+
 eqn = generate_expression("9x**2+12x+4=0")
 print(next_step(eqn))
 eqn = generate_expression("x**3-x**2+4x-4=0")
-print(next_step(eqn))
+tree = solve_recursive({"eq":eqn,"history": [("Start", eqn)]})
 
-# step, eq = isolate(eqn)
-# step2, eq2 = coefficient_cleanup(eq)
-# print(f"{step}, {step2}, {eq2}")
+def solve_eqn(eqn):
+    eqn = generate_expression(eqn)
+    tree = solve_recursive({"eq":eqn,"history": [("Start", eqn)]})
+    return formatter(tree)
 
-# print(coefficient_cleanup(isolate(generate_expression("3x-1=2"))))
+# print(""
+#       "")
+# for item in tree:
+#     for sub_item in item:
+#         print(sub_item)
+#         if type(sub_item) == list:
+#             print("")
+#             for sub_sub_item in sub_item:
+#                 print(sub_sub_item)
+
+wrapper = {
+
+}
+print("\n\n")
+print(formatter(tree))
 
